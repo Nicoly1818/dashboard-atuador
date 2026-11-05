@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard & Gantt - Monitoramento do Atuador Pneumático</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- FontAwesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .custom-scrollbar::-webkit-scrollbar {
+      height: 8px;
+      width: 8px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+      background: #f1f5f9;
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+      background: #cbd5e1;
+      border-radius: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+      background: #94a3b8;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 min-h-screen">
+
+  <!-- Header / Navbar -->
+  <header class="bg-slate-900 text-white shadow-lg sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex flex-col sm:flex-row justify-between items-center gap-4">
+      <div class="flex items-center gap-3">
+        <div class="bg-blue-600 p-2.5 rounded-xl shadow-md">
+          <i class="fa-solid font-bold fa-industry text-xl"></i>
+        </div>
+        <div>
+          <h1 class="text-xl font-bold tracking-tight">Monitoramento do Atuador - Berço 01</h1>
+          <p class="text-xs text-slate-400">Linha de Montagem A3 • Telemetria OPC UA / API</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-3">
+        <!-- Server Status Indicator -->
+        <span id="serverStatusBadge" class="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+          <span id="serverDot" class="w-2 h-2 mr-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span id="serverStatusText">Modo Simulação</span>
+        </span>
+        <button id="btnOpenServerModal" class="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold py-2 px-3.5 rounded-lg border border-blue-500 transition flex items-center gap-2 shadow-sm">
+          <i class="fa-solid fa-server text-xs"></i> Configurar Servidor
+        </button>
+        <button id="btnRefresh" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium py-2 px-3.5 rounded-lg border border-slate-700 transition flex items-center gap-2">
+          <i class="fa-solid fa-arrows-rotate text-xs"></i> Atualizar
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Modal Configuração do Servidor -->
+  <div id="serverModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+    <div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-6 space-y-5 m-4">
+      <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+        <h3 class="text-base font-bold text-slate-800 flex items-center gap-2">
+          <i class="fa-solid fa-network-wired text-blue-600"></i> Configurar Conexão do Servidor
+        </h3>
+        <button id="btnCloseModal" class="text-slate-400 hover:text-slate-600 text-sm">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      
+      <div class="space-y-4 text-xs">
+        <div>
+          <label class="block font-semibold text-slate-700 mb-1">Modo de Operação</label>
+          <select id="selectMode" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-slate-800 font-medium focus:ring-2 focus:ring-blue-500">
+            <option value="SIMULATION">Dados Simulados (Demonstração)</option>
+            <option value="LIVE_API">Servidor HTTP / API (JSON)</option>
+          </select>
+        </div>
+
+        <div id="serverUrlContainer" class="space-y-2 hidden">
+          <label class="block font-semibold text-slate-700">URL / IP do Novo Servidor</label>
+          <div class="flex gap-2">
+            <input type="text" id="inputServerUrl" placeholder="http://192.168.1.50:8000/dados" class="w-full bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-slate-800 font-mono focus:ring-2 focus:ring-blue-500">
+          </div>
+          <p class="text-[11px] text-slate-400">Insira a URL que retorna os dados em formato JSON ou o endpoint do servidor local (Ex: http://192.168.x.x:8000).</p>
+        </div>
+
+        <div id="connectionFeedback" class="hidden p-3 rounded-lg text-xs font-medium"></div>
+      </div>
+
+      <div class="flex justify-end gap-2 pt-2 border-t border-slate-100">
+        <button id="btnTestConnection" class="bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs px-3.5 py-2 rounded-lg transition">
+          Testar Conexão
+        </button>
+        <button id="btnSaveServer" class="bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs px-4 py-2 rounded-lg transition shadow-sm">
+          Salvar e Aplicar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Container -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+
+    <!-- Control & Filter Bar -->
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row justify-between items-center gap-4">
+      <div class="flex flex-wrap items-center gap-4 w-full md:w-auto">
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Filtrar por Turno</label>
+          <select id="selectTurno" class="bg-slate-50 border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2">
+            <option value="ALL">Todos os Turnos (A, B, C)</option>
+            <option value="Turno A">Turno A (Manhã)</option>
+            <option value="Turno B">Turno B (Tarde)</option>
+            <option value="Turno C">Turno C (Noite)</option>
+          </select>
+        </div>
+        <div>
+          <label class="block text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">Status do Ciclo</label>
+          <select id="selectStatus" class="bg-slate-50 border border-slate-300 text-slate-700 text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-2">
+            <option value="ALL">Todos os Status</option>
+            <option value="Normal">Normal (OK)</option>
+            <option value="Alerta">Alerta de Desgaste</option>
+          </select>
+        </div>
+      </div>
+      <div class="text-right w-full md:w-auto text-xs text-slate-500 border-t md:border-t-0 pt-2 md:pt-0 border-slate-100">
+        Servidor Conectado: <span id="lblActiveServer" class="font-semibold font-mono text-slate-700">Simulação Local</span>
+      </div>
+    </div>
+
+    <!-- Metric Cards (KPIs) -->
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+      <!-- Card 1 -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Total de Ciclos</p>
+            <h3 id="kpiTotalCiclos" class="text-2xl font-bold text-slate-900 mt-1">--</h3>
+          </div>
+          <div class="bg-blue-50 text-blue-600 p-3 rounded-xl">
+            <i class="fa-solid fa-rotate text-xl"></i>
+          </div>
+        </div>
+        <p class="text-xs text-emerald-600 mt-3 flex items-center font-medium">
+          <i class="fa-solid fa-arrow-up mr-1"></i> Produção ativa
+        </p>
+      </div>
+
+      <!-- Card 2 -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Tempo Médio Avanço</p>
+            <h3 id="kpiAvgAvanco" class="text-2xl font-bold text-slate-900 mt-1">-- s</h3>
+          </div>
+          <div class="bg-indigo-50 text-indigo-600 p-3 rounded-xl">
+            <i class="fa-solid fa-gauge-high text-xl"></i>
+          </div>
+        </div>
+        <p id="kpiAvancoMeta" class="text-xs text-slate-500 mt-3">Meta: &lt; 2.50s</p>
+      </div>
+
+      <!-- Card 3 -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Tempo Médio Recuo</p>
+            <h3 id="kpiAvgRecuo" class="text-2xl font-bold text-slate-900 mt-1">-- s</h3>
+          </div>
+          <div class="bg-cyan-50 text-cyan-600 p-3 rounded-xl">
+            <i class="fa-solid fa-clock-rotate-left text-xl"></i>
+          </div>
+        </div>
+        <p id="kpiRecuoMeta" class="text-xs text-slate-500 mt-3">Meta: &lt; 2.20s</p>
+      </div>
+
+      <!-- Card 4 -->
+      <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm relative overflow-hidden">
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-xs font-medium text-slate-500 uppercase tracking-wider">Disponibilidade (OEE)</p>
+            <h3 id="kpiOEE" class="text-2xl font-bold text-slate-900 mt-1">-- %</h3>
+          </div>
+          <div class="bg-emerald-50 text-emerald-600 p-3 rounded-xl">
+            <i class="fa-solid fa-chart-pie text-xl"></i>
+          </div>
+        </div>
+        <p class="text-xs text-emerald-600 mt-3 flex items-center font-medium">
+          <i class="fa-solid fa-circle-check mr-1"></i> Indicador Preditivo
+        </p>
+      </div>
+    </div>
+
+    <!-- Section: Gantt Chart -->
+    <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-4">
+        <div>
+          <h2 class="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <i class="fa-solid fa-chart-gantt text-blue-600"></i> Diagrama de Gantt (Estados do Atuador)
+          </h2>
+          <p class="text-xs text-slate-500">Mapeamento sequencial dos estados de Avanço, Permanência e Recuo ao longo do tempo</p>
+        </div>
+        <div class="flex items-center gap-3 text-xs">
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-blue-500"></span> Avançando</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-emerald-500"></span> Permanência</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-3 rounded bg-amber-500"></span> Recuando</span>
+        </div>
+      </div>
+
+      <!-- Gantt Visualization -->
+      <div class="overflow-x-auto custom-scrollbar pt-2">
+        <div id="ganttContainer" class="min-w-[800px] space-y-3 pb-2">
+          <!-- Rendered dynamically by JavaScript -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Section: Charts Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <!-- Tendência de Tempo de Resposta -->
+      <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+        <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+          <div>
+            <h3 class="text-base font-bold text-slate-800">Tendência de Tempo de Avanço (Segundos)</h3>
+            <p class="text-xs text-slate-500">Identificação de desgaste mecânico ou variação de pressão</p>
+          </div>
+          <span class="text-xs bg-amber-50 text-amber-700 px-2.5 py-1 rounded-full border border-amber-200">
+            Limiar: 2.80s
+          </span>
+        </div>
+        <div class="h-64">
+          <canvas id="trendChart"></canvas>
+        </div>
+      </div>
+
+      <!-- Distribuição por Turno -->
+      <div class="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
+        <div class="flex justify-between items-center border-b border-slate-100 pb-3">
+          <div>
+            <h3 class="text-base font-bold text-slate-800">Volume de Ciclos por Turno</h3>
+            <p class="text-xs text-slate-500">Comparativo de produtividade entre os turnos operacionais</p>
+          </div>
+        </div>
+        <div class="h-64">
+          <canvas id="turnoChart"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section: Data Table -->
+    <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div class="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+        <div>
+          <h3 class="text-base font-bold text-slate-800">Tabela de Registros de Ciclo</h3>
+          <p class="text-xs text-slate-500">Detalhamento amostragem por amostragem recebidos do servidor</p>
+        </div>
+        <button id="btnExport" class="bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold py-2 px-3 rounded-lg border border-slate-300 transition flex items-center gap-2 self-start sm:self-auto">
+          <i class="fa-solid fa-file-csv"></i> Exportar CSV
+        </button>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-xs text-slate-600">
+          <thead class="bg-slate-50 text-slate-500 uppercase tracking-wider font-semibold border-b border-slate-200">
+            <tr>
+              <th class="py-3.5 px-4">ID Ciclo</th>
+              <th class="py-3.5 px-4">Data / Hora Inicio</th>
+              <th class="py-3.5 px-4">Turno</th>
+              <th class="py-3.5 px-4">Tempo Avanço (s)</th>
+              <th class="py-3.5 px-4">Tempo Recuo (s)</th>
+              <th class="py-3.5 px-4">Duração Total (s)</th>
+              <th class="py-3.5 px-4 text-center">Status</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody" class="divide-y divide-slate-100">
+            <!-- Dynamic rows -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </main>
+
+  <footer class="bg-white border-t border-slate-200 mt-12 py-6">
+    <div class="max-w-7xl mx-auto px-4 text-center text-xs text-slate-400">
+      Dashboard de Telemetria de Atuadores Pneumáticos • Conexão com Servidor Local / OPC UA
+    </div>
+  </footer>
+
+  <!-- Logic & Scripts -->
+  <script>
+    // State Variables
+    let serverMode = localStorage.getItem('serverMode') || 'SIMULATION';
+    let serverUrl = localStorage.getItem('serverUrl') || 'http://192.168.1.50:8000/dados';
+    let globalData = [];
+    let trendChartInstance = null;
+    let turnoChartInstance = null;
+
+    // Modal elements
+    const serverModal = document.getElementById('serverModal');
+    const btnOpenServerModal = document.getElementById('btnOpenServerModal');
+    const btnCloseModal = document.getElementById('btnCloseModal');
+    const selectMode = document.getElementById('selectMode');
+    const serverUrlContainer = document.getElementById('serverUrlContainer');
+    const inputServerUrl = document.getElementById('inputServerUrl');
+    const btnSaveServer = document.getElementById('btnSaveServer');
+    const btnTestConnection = document.getElementById('btnTestConnection');
+    const connectionFeedback = document.getElementById('connectionFeedback');
+
+    // Setup Modal Controls
+    btnOpenServerModal.onclick = () => {
+      selectMode.value = serverMode;
+      inputServerUrl.value = serverUrl;
+      toggleUrlVisibility();
+      connectionFeedback.classList.add('hidden');
+      serverModal.classList.remove('hidden');
+    };
+
+    btnCloseModal.onclick = () => serverModal.classList.add('hidden');
+
+    selectMode.onchange = toggleUrlVisibility;
+
+    function toggleUrlVisibility() {
+      if (selectMode.value === 'LIVE_API') {
+        serverUrlContainer.classList.remove('hidden');
+      } else {
+        serverUrlContainer.classList.add('hidden');
+      }
+    }
+
+    btnSaveServer.onclick = () => {
+      serverMode = selectMode.value;
+      serverUrl = inputServerUrl.value.trim();
+      localStorage.setItem('serverMode', serverMode);
+      localStorage.setItem('serverUrl', serverUrl);
+      serverModal.classList.add('hidden');
+      fetchDataAndRender();
+    };
+
+    btnTestConnection.onclick = async () => {
+      connectionFeedback.classList.remove('hidden', 'bg-emerald-100', 'text-emerald-800', 'bg-red-100', 'text-red-800');
+      connectionFeedback.innerHTML = '<i class="fa-solid fa-spinner animate-spin mr-1"></i> Testando conexão com o servidor...';
+
+      if (selectMode.value === 'SIMULATION') {
+        connectionFeedback.className = 'p-3 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-800';
+        connectionFeedback.innerHTML = '<i class="fa-solid fa-circle-check mr-1"></i> Modo Simulação ativo. Funcionamento local garantido.';
+        return;
+      }
+
+      try {
+        const response = await fetch(inputServerUrl.value.trim(), { method: 'GET' });
+        if (response.ok) {
+          connectionFeedback.className = 'p-3 rounded-lg text-xs font-medium bg-emerald-100 text-emerald-800';
+          connectionFeedback.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i> Conexão bem-sucedida! (Status HTTP ${response.status})`;
+        } else {
+          throw new Error(`HTTP ${response.status}`);
+        }
+      } catch (err) {
+        connectionFeedback.className = 'p-3 rounded-lg text-xs font-medium bg-red-100 text-red-800';
+        connectionFeedback.innerHTML = `<i class="fa-solid fa-triangle-exclamation mr-1"></i> Falha ao conectar no servidor: ${err.message}. Verifique o IP e a porta.`;
+      }
+    };
+
+    // Fictitious Dataset Generator (Fallback)
+    function generateFictitiousData() {
+      const data = [];
+      const turnos = ['Turno A', 'Turno B', 'Turno C'];
+      let baseTime = new Date(2026, 9, 7, 8, 0, 0);
+
+      for (let i = 1; i <= 15; i++) {
+        const cicloId = `CICLO_${String(i).padStart(4, '0')}`;
+        const turno = turnos[Math.floor((i - 1) / 5)];
+        
+        const isDegraded = i === 7 || i === 12 || i === 13;
+        const tempoAvanco = isDegraded ? +(2.85 + Math.random() * 0.4).toFixed(2) : +(2.10 + Math.random() * 0.3).toFixed(2);
+        const tempoRecuo = +(1.80 + Math.random() * 0.25).toFixed(2);
+        const tempoPermanencia = +(4.00 + Math.random() * 1.0).toFixed(2);
+        const duracaoTotal = +(tempoAvanco + tempoPermanencia + tempoRecuo).toFixed(2);
+
+        const startTime = new Date(baseTime);
+        const endTime = new Date(startTime.getTime() + duracaoTotal * 1000);
+
+        data.push({
+          id: cicloId,
+          turno: turno,
+          startTime: startTime,
+          endTime: endTime,
+          tempoAvanco: tempoAvanco,
+          tempoRecuo: tempoRecuo,
+          tempoPermanencia: tempoPermanencia,
+          duracaoTotal: duracaoTotal,
+          status: tempoAvanco > 2.80 ? 'Alerta' : 'Normal'
+        });
+
+        baseTime = new Date(endTime.getTime() + (20 + Math.random() * 40) * 1000);
+      }
+      return data;
+    }
+
+    // Main Data Fetcher
+    async function fetchDataAndRender() {
+      const lblActiveServer = document.getElementById('lblActiveServer');
+      const serverStatusText = document.getElementById('serverStatusText');
+      const serverDot = document.getElementById('serverDot');
+
+      if (serverMode === 'LIVE_API') {
+        lblActiveServer.innerText = serverUrl;
+        try {
+          serverStatusText.innerText = 'Buscando Dados...';
+          const res = await fetch(serverUrl);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const json = await res.json();
+          
+          // Map response data
+          globalData = json.map(item => ({
+            id: item.id || item.ciclo_id,
+            turno: item.turno || 'Turno A',
+            startTime: new Date(item.startTime || item.data_hora),
+            endTime: new Date(item.endTime || item.data_hora_fim),
+            tempoAvanco: Number(item.tempoAvanco || item.tempo_avanco),
+            tempoRecuo: Number(item.tempoRecuo || item.tempo_recuo),
+            tempoPermanencia: Number(item.tempoPermanencia || item.tempo_permanencia || 4.0),
+            duracaoTotal: Number(item.duracaoTotal || item.duracao_total),
+            status: Number(item.tempoAvanco || item.tempo_avanco) > 2.80 ? 'Alerta' : 'Normal'
+          }));
+
+          serverStatusText.innerText = 'Servidor Ativo';
+          serverDot.className = 'w-2 h-2 mr-1.5 rounded-full bg-emerald-400 animate-pulse';
+        } catch (e) {
+          console.warn('Erro ao conectar ao servidor. Utilizando dados simulados de backup.', e);
+          serverStatusText.innerText = 'Servidor Offline (Fallback)';
+          serverDot.className = 'w-2 h-2 mr-1.5 rounded-full bg-amber-400';
+          globalData = generateFictitiousData();
+        }
+      } else {
+        lblActiveServer.innerText = 'Simulação Local';
+        serverStatusText.innerText = 'Modo Simulação';
+        serverDot.className = 'w-2 h-2 mr-1.5 rounded-full bg-blue-400 animate-pulse';
+        globalData = generateFictitiousData();
+      }
+
+      updateDashboard();
+    }
+
+    function formatDate(d) {
+      return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    }
+
+    function updateDashboard() {
+      const selectedTurno = document.getElementById('selectTurno').value;
+      const selectedStatus = document.getElementById('selectStatus').value;
+
+      const filtered = globalData.filter(d => {
+        const matchTurno = selectedTurno === 'ALL' || d.turno === selectedTurno;
+        const matchStatus = selectedStatus === 'ALL' || d.status === selectedStatus;
+        return matchTurno && matchStatus;
+      });
+
+      // Update KPIs
+      document.getElementById('kpiTotalCiclos').innerText = filtered.length;
+      
+      const avgAvanco = filtered.length ? (filtered.reduce((acc, c) => acc + c.tempoAvanco, 0) / filtered.length).toFixed(2) : '0.00';
+      const avgRecuo = filtered.length ? (filtered.reduce((acc, c) => acc + c.tempoRecuo, 0) / filtered.length).toFixed(2) : '0.00';
+      
+      document.getElementById('kpiAvgAvanco').innerText = `${avgAvanco} s`;
+      document.getElementById('kpiAvgRecuo').innerText = `${avgRecuo} s`;
+
+      const oee = filtered.length ? ((1 - (filtered.filter(f => f.status === 'Alerta').length / filtered.length)) * 100).toFixed(1) : '100.0';
+      document.getElementById('kpiOEE').innerText = `${oee} %`;
+
+      renderGantt(filtered);
+      renderTrendChart(filtered);
+      renderTurnoChart(globalData);
+      renderTable(filtered);
+    }
+
+    function renderGantt(data) {
+      const container = document.getElementById('ganttContainer');
+      container.innerHTML = '';
+
+      if (data.length === 0) {
+        container.innerHTML = '<p class="text-xs text-slate-400 py-4 text-center">Nenhum registro encontrado para os filtros selecionados.</p>';
+        return;
+      }
+
+      data.forEach(item => {
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-4 text-xs';
+
+        const total = item.duracaoTotal || 1;
+        const pctAvanco = ((item.tempoAvanco / total) * 100).toFixed(1);
+        const pctPerm = ((item.tempoPermanencia / total) * 100).toFixed(1);
+        const pctRecuo = ((item.tempoRecuo / total) * 100).toFixed(1);
+
+        row.innerHTML = `
+          <div class="w-24 font-semibold text-slate-700 flex-shrink-0">${item.id}</div>
+          <div class="w-20 text-slate-400 text-[11px] flex-shrink-0">${formatDate(item.startTime)}</div>
+          <div class="flex-1 bg-slate-100 rounded-lg h-7 flex overflow-hidden border border-slate-200 relative group">
+            <div style="width: ${pctAvanco}%" class="bg-blue-500 h-full flex items-center justify-center text-white font-medium text-[10px]" title="Avançando: ${item.tempoAvanco}s">
+              ${pctAvanco > 10 ? item.tempoAvanco + 's' : ''}
+            </div>
+            <div style="width: ${pctPerm}%" class="bg-emerald-500 h-full flex items-center justify-center text-white font-medium text-[10px]" title="Permanência: ${item.tempoPermanencia}s">
+              ${pctPerm > 10 ? item.tempoPermanencia + 's' : ''}
+            </div>
+            <div style="width: ${pctRecuo}%" class="bg-amber-500 h-full flex items-center justify-center text-white font-medium text-[10px]" title="Recuando: ${item.tempoRecuo}s">
+              ${pctRecuo > 10 ? item.tempoRecuo + 's' : ''}
+            </div>
+          </div>
+          <div class="w-16 text-right font-medium text-slate-600 flex-shrink-0">${item.duracaoTotal}s</div>
+        `;
+
+        container.appendChild(row);
+      });
+    }
+
+    function renderTrendChart(data) {
+      const ctx = document.getElementById('trendChart').getContext('2d');
+      if (trendChartInstance) trendChartInstance.destroy();
+
+      trendChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: data.map(d => d.id),
+          datasets: [
+            {
+              label: 'Tempo Avanço (s)',
+              data: data.map(d => d.tempoAvanco),
+              borderColor: '#2563eb',
+              backgroundColor: 'rgba(37, 99, 235, 0.1)',
+              fill: true,
+              tension: 0.3,
+              pointRadius: 4
+            },
+            {
+              label: 'Limiar Alerta (2.8s)',
+              data: data.map(() => 2.80),
+              borderColor: '#ef4444',
+              borderDash: [5, 5],
+              pointRadius: 0,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: true, position: 'top' } },
+          scales: { y: { min: 1.5, max: 3.5 } }
+        }
+      });
+    }
+
+    function renderTurnoChart(data) {
+      const ctx = document.getElementById('turnoChart').getContext('2d');
+      const turnosCount = { 'Turno A': 0, 'Turno B': 0, 'Turno C': 0 };
+      data.forEach(d => { if (turnosCount[d.turno] !== undefined) turnosCount[d.turno]++; });
+
+      if (turnoChartInstance) turnoChartInstance.destroy();
+
+      turnoChartInstance = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(turnosCount),
+          datasets: [{
+            label: 'Total de Ciclos',
+            data: Object.values(turnosCount),
+            backgroundColor: ['#3b82f6', '#6366f1', '#8b5cf6'],
+            borderRadius: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: { y: { beginAtZero: true } }
+        }
+      });
+    }
+
+    function renderTable(data) {
+      const tbody = document.getElementById('tableBody');
+      tbody.innerHTML = '';
+
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.className = 'hover:bg-slate-50 transition';
+        
+        const statusBadge = row.status === 'Alerta'
+          ? `<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">Alerta Desgaste</span>`
+          : `<span class="px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">Normal</span>`;
+
+        tr.innerHTML = `
+          <td class="py-3 px-4 font-medium text-slate-900">${row.id}</td>
+          <td class="py-3 px-4 text-slate-500">${row.startTime.toLocaleString('pt-BR')}</td>
+          <td class="py-3 px-4 font-medium">${row.turno}</td>
+          <td class="py-3 px-4 ${row.tempoAvanco > 2.8 ? 'text-amber-600 font-bold' : ''}">${row.tempoAvanco.toFixed(2)}s</td>
+          <td class="py-3 px-4">${row.tempoRecuo.toFixed(2)}s</td>
+          <td class="py-3 px-4 font-semibold">${row.duracaoTotal.toFixed(2)}s</td>
+          <td class="py-3 px-4 text-center">${statusBadge}</td>
+        `;
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Event Listeners
+    document.getElementById('selectTurno').addEventListener('change', updateDashboard);
+    document.getElementById('selectStatus').addEventListener('change', updateDashboard);
+    document.getElementById('btnRefresh').addEventListener('click', fetchDataAndRender);
+
+    document.getElementById('btnExport').addEventListener('click', () => {
+      let csv = 'ID_Ciclo;Data_Hora;Turno;Tempo_Avanco_s;Tempo_Recuo_s;Duracao_Total_s;Status\n';
+      globalData.forEach(r => {
+        csv += `${r.id};${r.startTime.toISOString()};${r.turno};${r.tempoAvanco};${r.tempoRecuo};${r.duracaoTotal};${r.status}\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.setAttribute('download', 'relatorio_atuador.csv');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
+
+    // Initialize
+    fetchDataAndRender();
+  </script>
+</body>
+</html>
